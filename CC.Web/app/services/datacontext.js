@@ -112,6 +112,7 @@
             if (primePromise) return primePromise;
 
             // accepts an array of promise
+            // $q.all, wait for both to finish
             primePromise = $q.all([getLookups(), getSpeakerPartials()])
             .then(extendMetadata)
             .then(success);
@@ -133,7 +134,7 @@
                 });
 
                 var personEntityName = entityNames.person;
-                // set these entity types as Person (note that person exists in the backend)
+                // set these entity types as Person (note that Person exists in the backend)
                 ['Speakers', 'Speaker', 'Attendees', 'Attendee'].forEach(function (r) {
                     set(r, personEntityName);
                 });
@@ -166,8 +167,8 @@
                 .using(manager).execute()
                 .to$q(querySucceeded, _queryFailed);
 
-            // do nothing, just log
             // after breeze has retrieved the data from the server, it will cache the data locally in memory
+            // do nothing, just log
             function querySucceeded(data) {
                 log('Retrieved [Lookups]', data, true);
                 return true;
