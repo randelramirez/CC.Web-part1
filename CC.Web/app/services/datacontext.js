@@ -12,6 +12,7 @@
         This means that EntityQueries can be 'modified' without affecting any current instances.
        */
         var EntityQuery = breeze.EntityQuery;
+        var Predicate = breeze.Predicate;
         var getLogFn = common.logger.getLogFn;
         var log = getLogFn(serviceId);
         var logError = getLogFn(serviceId, 'error');
@@ -39,11 +40,16 @@
         // but rather these are entity types
 
         var service = {
-            getPeople: getPeople,
-            getMessageCount: getMessageCount,
-            getSessionPartials: getSessionPartials,
-            getSpeakerPartials: getSpeakerPartials,
+            getAttendeeCount: getAttendeeCount,
             getAttendees: getAttendees,
+            getFilteredCount: getFilteredCount,
+            getPeople: getPeople,
+           // getSessionCount: getSessionCount,
+            getSessionPartials: getSessionPartials,
+           // getSpeakersLocal: getSpeakersLocal,
+            getSpeakerPartials: getSpeakerPartials,
+           // getSpeakersTopLocal: getSpeakersTopLocal,
+            //getTrackCounts: getTrackCounts,
             prime: prime
         };
 
@@ -64,27 +70,55 @@
             return $q.when(people);
         }
 
-        function getAttendees(forceRemote) {
+        function getAttendees(forceRemote, page, size, nameFilter) {
             var orderBy = 'firstName, lastName';
-            var attendees = [];
+            //var attendees = [];
 
+            var take = size || 20;
+            var skip = page ? (page - 1) * size : 0;
+            
             if (_areAttendeesLoaded() && !forceRemote) {
-                attendees = _getAllLocal(entityNames.attendee, orderBy);
-                return $q.when(attendees);
+                //attendees = _getAllLocal(entityNames.attendee, orderBy);
+                //return $q.when(attendees);
+
+                // return only the data for a particular page
+                return $q.when(getByPage());
             }
 
+            // for initial load
             return EntityQuery.from('Persons')
                 .select('id, firstName, lastName, imageSource')
                 .orderBy(orderBy)
                 .toType(entityNames.attendee)
                 .using(manager).execute()
-                .to$q(querySucceeded, _queryFailed);
+                .then(querySucceeded)
+                .catch(_queryFailed);
+                //.to$q(querySucceeded, _queryFailed);
+
+            function getByPage() {
+                var predicate = null;
+                if (nameFilter) {
+                    predicate = _fullNamePredicate(nameFilter);
+                }
+                var attendees = EntityQuery.from(entityNames.attendee)
+                    //.select('id, firstName, lastName, imageSource') // not needed because it is already loaded locally so all needed properties are already there
+                    //.toType(entityNames.attendee) not needed since it already in cache locally
+                    .where(predicate)
+                    .take(take)
+                    .skip(skip)
+                    .orderBy(orderBy)
+                    .using(manager)
+                    .executeLocally()
+                // note that this happens synchronously, this is not a promise object
+                // usage for those expecting a promise object $q.when(getByPage())
+                return attendees;
+                    //.to$q(querySucceeded, _queryFailed); // not needed because it is done locally
+            }
 
             function querySucceeded(data) {
-                attendees = data.results;
                 _areAttendeesLoaded(true);
-                log('Retrieved [Attendees] from remote data source', attendees.length, true);
-                return attendees;
+                log('Retrieved [Attendees] from remote data source', data.results.length, true);
+                return getByPage();
             }
         }
 
@@ -142,7 +176,8 @@
                 // toType tells breeze what entity type to use for the projection
                 .toType(entityNames.session)
                 .using(manager).execute()
-                .to$q(querySucceeded, _queryFailed);
+                .then(querySucceeded)
+                .catch(_queryFailed);
 
             // .then(querySucceeded)
             //   .catch(queryFailed)
@@ -206,6 +241,27 @@
             };
         }
 
+        function getAttendeeCount() {
+            if (_areAttendeesLoaded()) {
+                return $q.when(_getLocalEntityCount(entityNames.attendee));
+            }
+            // Attendees aren't loaded; ask the server for a count.
+            return EntityQuery.from('Persons').take(0).inlineCount()
+                .using(manager).execute()
+                .to$q(_getInlineCount);
+        }
+
+        function getFilteredCount(nameFilter) {
+            var predicate = _fullNamePredicate(nameFilter);
+
+            var attendees = EntityQuery.from(entityNames.attendee)
+                .where(predicate)
+                .using(manager)
+                .executeLocally();
+
+            return attendees.length;
+        }
+
         function getLookups() {
             // breeze is aware that Lookups is only a resource and not an entity
             return EntityQuery.from('Lookups')
@@ -219,6 +275,8 @@
                 return true;
             }
         }
+
+        function _getInlineCount(data) { return data.inlineCount; }
 
         function _getAllLocal(resource, ordering, predicate) {
             return EntityQuery.from(resource)
@@ -250,6 +308,19 @@
             var msg = config.appErrorPrefix + 'Error retreiving data.' + error.message;
             logError(msg, error);
             throw error;
+        }
+
+        function _fullNamePredicate(filterValue) {
+            return Predicate
+                .create('firstName', 'contains', filterValue)
+                .or('lastName', 'contains', filterValue);
+        }
+
+        function _getLocalEntityCount(resource) {
+            var entities = EntityQuery.from(resource)
+                .using(manager)
+                .executeLocally();
+            return entities.length;
         }
     }
 })();

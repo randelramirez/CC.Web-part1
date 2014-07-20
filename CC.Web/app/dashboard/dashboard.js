@@ -19,16 +19,16 @@
         activate();
 
         function activate() {
-            var promises = [getMessageCount(), getPeople()];
+            var promises = [];//[getMessageCount(), getPeople()];
             common.activateController(promises, controllerId)
                 .then(function () { log('Activated Dashboard View'); });
         }
 
-        function getMessageCount() {
-            return datacontext.getMessageCount().then(function (data) {
-                return vm.messageCount = data;
-            });
-        }
+        //function getMessageCount() {
+        //    return datacontext.getMessageCount().then(function (data) {
+        //        return vm.messageCount = data;
+        //    });
+        //}
 
         function getPeople() {
             return datacontext.getPeople().then(function (data) {
