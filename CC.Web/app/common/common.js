@@ -85,9 +85,8 @@
                 // Wrapped in outer IFFE so we can use closure 
                 // over filterInputTimeout which references the timeout
                 var filterInputTimeout;
-
                 // return what becomes the 'applyFilter' function in the controller
-                return function(searchNow) {
+                return function (searchNow) {
                     if (filterInputTimeout) {
                         $timeout.cancel(filterInputTimeout);
                         filterInputTimeout = null;

@@ -2,9 +2,9 @@
     'use strict';
 
     var serviceId = 'datacontext';
-    angular.module('app').factory(serviceId, ['common', 'entityManagerFactory', datacontext]);
+    angular.module('app').factory(serviceId, ['common', 'entityManagerFactory', 'model', datacontext]);
 
-    function datacontext(common, emFactory) {
+    function datacontext(common, emFactory, model) {
 
         /*
         An EntityQuery instance is used to query entities either from a remote datasource or from a local EntityManager.
@@ -16,7 +16,7 @@
         var log = getLogFn(serviceId);
         var logError = getLogFn(serviceId, 'error');
         var logSuccess = getLogFn(serviceId, 'success');
-
+        var entityNames = model.entityNames;
 
         // create entity manager
         /*Instances of the EntityManager contain and manage collections of entities, 
@@ -25,24 +25,25 @@
         var primePromise;
         var $q = common.$q;
 
+        var storeMeta = {
+            isLoaded: {
+                // note that speakers are included since we prime the data for it,
+                // so there's no need to check, but it we include it if we want to
+                sessions: false,
+                attendees: false
+            }
+        };
+
 
         // notice that these are not resource(functions in the controller(breezecontroller))
         // but rather these are entity types
-        var entityNames = {
-            attendee: 'Person',
-            person: 'Person',
-            speaker: 'Person',
-            session: 'Session',
-            room: 'Room',
-            track: 'Track',
-            timeslot: 'TimeSlot'
-        };
 
         var service = {
             getPeople: getPeople,
             getMessageCount: getMessageCount,
             getSessionPartials: getSessionPartials,
             getSpeakerPartials: getSpeakerPartials,
+            getAttendees: getAttendees,
             prime: prime
         };
 
@@ -63,34 +64,83 @@
             return $q.when(people);
         }
 
-        function getSpeakerPartials() {
+        function getAttendees(forceRemote) {
+            var orderBy = 'firstName, lastName';
+            var attendees = [];
+
+            if (_areAttendeesLoaded() && !forceRemote) {
+                attendees = _getAllLocal(entityNames.attendee, orderBy);
+                return $q.when(attendees);
+            }
+
+            return EntityQuery.from('Persons')
+                .select('id, firstName, lastName, imageSource')
+                .orderBy(orderBy)
+                .toType(entityNames.attendee)
+                .using(manager).execute()
+                .to$q(querySucceeded, _queryFailed);
+
+            function querySucceeded(data) {
+                attendees = data.results;
+                _areAttendeesLoaded(true);
+                log('Retrieved [Attendees] from remote data source', attendees.length, true);
+                return attendees;
+            }
+        }
+
+
+        // notice that getSpeakerPartials doesn't have a checking if it has already been loaded
+        // this is because we have primed the application, so the data is already been loaded right from the get go.
+        // the only checking we do here if we are using a forceRemote
+        function getSpeakerPartials(forceRemote) {
             var speakerOrderBy = 'firstName, lastName';
             var speakers = [];
+
+            // additional checking isSpeaker since it will look for the Person entity
+            // isSpeaker => see model.js
+            var predicate = breeze.Predicate.create('isSpeaker', '==', true);
+
+            if (!forceRemote) {
+                speakers = _getAllLocal(entityNames.speaker, speakerOrderBy, predicate);
+                return $q.when(speakers);
+            }
 
             return EntityQuery.from('Speakers')
                 .select('id, firstName, lastName, imageSource')
                 .orderBy(speakerOrderBy)
-                .toType('Person')
+                .toType(entityNames.speaker)
                 .using(manager).execute()
                 .to$q(querySucceeded, _queryFailed);
 
             function querySucceeded(data) {
                 speakers = data.results;
-                // true= show alert on screen as well
+                // set the items as speakers
+                for (var i = speakers.length; i--;){
+                    speakers[i].isSpeaker = true;
+                }
                 log('Retrieved [Speaker Partials] from remote data source', speakers.length, true);
                 return speakers;
             }
         }
 
-        function getSessionPartials() {
+        function getSessionPartials(forceRemote) {
             var orderBy = 'timeSlotId, level, speaker.firstName';
             var sessions;
+
+            if (_areSessionsLoaded() && !forceRemote) {
+                sessions = _getAllLocal(entityNames.session, orderBy);
+                // note, the local data is retrieved synchronously, so it doesn't return a promise
+                // but in the controller,  datacontext.getSessionPartials().then() expects the return 
+                // of this function to be a promise, so we wrap the sessions variable inside a promise
+                // $q.when() resolves the promise back
+                return $q.when(sessions);
+            }
 
             return EntityQuery.from('Sessions')
                 .select('id, title, code, speakerId, trackId, timeSlotId, roomId, level, tags')
                 .orderBy(orderBy)
                 // toType tells breeze what entity type to use for the projection
-                .toType('Session')
+                .toType(entityNames.session)
                 .using(manager).execute()
                 .to$q(querySucceeded, _queryFailed);
 
@@ -102,6 +152,7 @@
 
             function querySucceeded(data) {
                 sessions = data.results;
+                _areSessionsLoaded(true);
                 log('Retrieved [Session Partials] from remote data source', sessions.length, true);
                 return sessions;
             }
@@ -113,7 +164,8 @@
 
             // accepts an array of promise
             // $q.all, wait for both to finish
-            primePromise = $q.all([getLookups(), getSpeakerPartials()])
+            // getSpeakerPartials, make sure that it comes from the server, note that prime is called on start of the application
+            primePromise = $q.all([getLookups(), getSpeakerPartials(true)])
             .then(extendMetadata)
             .then(success);
             return primePromise;
@@ -154,13 +206,6 @@
             };
         }
 
-        function _getAllLocal(resource, ordering) {
-            return EntityQuery.from(resource)
-                .orderBy(ordering)
-                .using(manager)
-                .executeLocally();
-        }
-
         function getLookups() {
             // breeze is aware that Lookups is only a resource and not an entity
             return EntityQuery.from('Lookups')
@@ -173,6 +218,32 @@
                 log('Retrieved [Lookups]', data, true);
                 return true;
             }
+        }
+
+        function _getAllLocal(resource, ordering, predicate) {
+            return EntityQuery.from(resource)
+                .orderBy(ordering)
+                .where(predicate)
+                .using(manager)
+                .executeLocally();
+        }
+
+
+        // if value is passed, we are setting it // set
+        // if value is not passed, we are getting it // get
+        function _areSessionsLoaded(value) {
+            return _areItemsLoaded('sessions', value);
+        }
+
+        function _areAttendeesLoaded(value) {
+            return _areItemsLoaded('attendees', value);
+        }
+
+        function _areItemsLoaded(key, value) {
+            if (value === undefined) {
+                return storeMeta.isLoaded[key]; // get
+            }
+            return storeMeta.isLoaded[key] = value; // set
         }
 
         function _queryFailed(error) {

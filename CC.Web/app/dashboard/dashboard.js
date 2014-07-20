@@ -1,12 +1,12 @@
 ﻿(function () {
     'use strict';
     var controllerId = 'dashboard';
-    angular.module('app').controller(controllerId, ['common', 'datacontext', dashboard]);
+    angular.module('app').controller(controllerId, ['$timeout', 'common', 'datacontext', dashboard]);
 
-    function dashboard(common, datacontext) {
+    function dashboard($timeout, common, datacontext) {
         var getLogFn = common.logger.getLogFn;
         var log = getLogFn(controllerId);
-
+        var y = $timeout(function () { console.log("timeout"); }, 5000);
         var vm = this;
         vm.news = {
             title: 'Hot Towel Angular',
