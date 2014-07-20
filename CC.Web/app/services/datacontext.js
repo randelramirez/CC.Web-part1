@@ -43,32 +43,16 @@
             getAttendeeCount: getAttendeeCount,
             getAttendees: getAttendees,
             getFilteredCount: getFilteredCount,
-            getPeople: getPeople,
-           // getSessionCount: getSessionCount,
+            getSessionCount: getSessionCount,
             getSessionPartials: getSessionPartials,
-           // getSpeakersLocal: getSpeakersLocal,
+            getSpeakersLocal: getSpeakersLocal,
             getSpeakerPartials: getSpeakerPartials,
-           // getSpeakersTopLocal: getSpeakersTopLocal,
-            //getTrackCounts: getTrackCounts,
+            getSpeakersTopLocal: getSpeakersTopLocal,
+            getTrackCounts: getTrackCounts,
             prime: prime
         };
 
         return service;
-
-        function getMessageCount() { return $q.when(72); }
-
-        function getPeople() {
-            var people = [
-                { firstName: 'John', lastName: 'Papa', age: 25, location: 'Florida' },
-                { firstName: 'Ward', lastName: 'Bell', age: 31, location: 'California' },
-                { firstName: 'Colleen', lastName: 'Jones', age: 21, location: 'New York' },
-                { firstName: 'Madelyn', lastName: 'Green', age: 18, location: 'North Dakota' },
-                { firstName: 'Ella', lastName: 'Jobs', age: 18, location: 'South Dakota' },
-                { firstName: 'Landon', lastName: 'Gates', age: 11, location: 'South Carolina' },
-                { firstName: 'Haley', lastName: 'Guthrie', age: 35, location: 'Wyoming' }
-            ];
-            return $q.when(people);
-        }
 
         function getAttendees(forceRemote, page, size, nameFilter) {
             var orderBy = 'firstName, lastName';
@@ -250,6 +234,57 @@
                 .using(manager).execute()
                 .to$q(_getInlineCount);
         }
+
+        function getSessionCount() {
+            if (_areSessionsLoaded()) {
+                return $q.when(_getLocalEntityCount(entityNames.session));
+            }
+            // Sessions aren't loaded; ask the server for a count.
+            return EntityQuery.from('Sessions')
+                // take 0, don't return anything, just get the total number, saves bandwidth
+                .take(0).inlineCount()
+                .using(manager).execute()
+                .to$q(_getInlineCount);
+        }
+
+        function getSpeakersLocal() {
+            // note speakers are already loaded on start, via prime
+            var orderBy = 'firstName, lastName';
+            var predicate = Predicate.create('isSpeaker','==', true);
+            return _getAllLocal(entityNames.speaker, orderBy, predicate);
+        }
+
+        function getTrackCounts() {
+            return getSessionPartials().then(function (data) {
+                var sessions = data;
+                //loop thru the sessions and create a mapped track counter object
+                var trackMap = sessions.reduce(function (accum, session) {
+                    var trackName = session.track.name;
+                    var trackId = session.track.id;
+                    if (accum[trackId - 1]) {
+                        accum[trackId - 1].count++;
+                    } else {
+                        accum[trackId - 1] = {
+                            track: trackName,
+                            count: 1
+                        };
+                    }
+                    return accum;
+                }, []);
+                return trackMap;
+            });
+        }
+
+        function getSpeakersTopLocal() {
+            var orderBy = 'firstName, lastName';
+            var predicate = Predicate.create('lastName', '==', 'Papa')
+                .or('lastName', '==', 'Guthrie')
+                .or('lastName', '==', 'Bell')
+                .or('lastName', '==', 'Hanselman')
+                .or('lastName', '==', 'Lerman')
+                .and('isSpeaker', '==', true);
+            return _getAllLocal(entityNames.speaker, orderBy, predicate);
+            }
 
         function getFilteredCount(nameFilter) {
             var predicate = _fullNamePredicate(nameFilter);

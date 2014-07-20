@@ -6,34 +6,79 @@
     function dashboard($timeout, common, datacontext) {
         var getLogFn = common.logger.getLogFn;
         var log = getLogFn(controllerId);
-        var y = $timeout(function () { console.log("timeout"); }, 5000);
         var vm = this;
+        vm.map = {
+            title: 'Location'
+        };
+
+        vm.speakers = {
+            interval: 5000,
+            list: [],
+            title: 'Top Speakers'
+        };
+
+        vm.news = {
+            title: 'Code Camp',
+            description: 'Code Camp is a community event where developers learn from fellow developers. All are welcome to attend and speak. Code Camp is free, by and for the deveoper community, and occurs on the weekends.'
+        };
+
+        vm.content = {
+            predicate: '',
+            reverse: false,
+            setSort: setContentSort,
+            title: 'Content',
+            tracks: []
+        };
+
+        vm.attendeeCount = 0;
+        vm.sessionCount = 0;
+        vm.speakerCount = 0;
         vm.news = {
             title: 'Hot Towel Angular',
             description: 'Hot Towel Angular is a SPA template for Angular developers.'
         };
-        vm.messageCount = 0;
-        vm.people = [];
         vm.title = 'Dashboard';
 
         activate();
 
         function activate() {
-            var promises = [];//[getMessageCount(), getPeople()];
+            var promises = [getAttendeeCount(), getSessionCount(), getSpeakerCount(), getSpeakerCount(), getTopSpeakers(), getTrackCounts()];
             common.activateController(promises, controllerId)
                 .then(function () { log('Activated Dashboard View'); });
         }
 
-        //function getMessageCount() {
-        //    return datacontext.getMessageCount().then(function (data) {
-        //        return vm.messageCount = data;
-        //    });
-        //}
-
-        function getPeople() {
-            return datacontext.getPeople().then(function (data) {
-                return vm.people = data;
+        function getAttendeeCount() {
+            return datacontext.getAttendeeCount().then(function (data) {
+                return vm.attendeeCount = data;
             });
         }
+
+        function getSessionCount() {
+            return datacontext.getSessionCount().then(function (data) {
+                return vm.sessionCount = data;
+            });
+        }
+
+        function getTrackCounts() {
+            return datacontext.getTrackCounts().then(function (data) {
+                return vm.content.tracks = data;
+            });
+        }
+
+        function getTopSpeakers() {
+            vm.speakers.list = datacontext.getSpeakersTopLocal();
+        }
+
+        function getSpeakerCount() {
+            var speakers = datacontext.getSpeakersLocal();
+            vm.speakerCount = speakers.length;
+        }
+
+        function setContentSort(prop) {
+            vm.content.predicate = prop;
+            vm.content.reverse = !vm.content.reverse;
+        }
+
+       
     }
 })();
